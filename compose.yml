@@ -1,0 +1,164 @@
+services:
+  traefik:
+    image: traefik:v3.7
+    container_name: prowlarr-traefik
+    command:
+      - "--ping=true"
+      - "--log.level=INFO"
+      - "--api=true"
+      - "--api.dashboard=true"
+
+      - "--providers.docker=true"
+      - "--providers.docker.endpoint=unix:///var/run/docker.sock"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=prowlarr_mitmproxy"
+
+      - "--entrypoints.mitmproxy-web.address=:80"
+      - "--entrypoints.mitmproxy-web.forwardedheaders.trustedips=0.0.0.0/0"
+      - "--entrypoints.mitmproxy-web.forwardedheaders.insecure=true"
+
+    restart: always
+
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:${BIND_PORT:-80}:80"
+
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      start_period: 5s
+      interval: 5s
+      retries: 30
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=prowlarr_mitmproxy"
+
+      # Traefik dashboard page:
+      # http://host/dashboard/
+      - "traefik.http.routers.traefik-dashboard.rule=PathPrefix(`/dashboard`)"
+      - "traefik.http.routers.traefik-dashboard.priority=10000"
+      - "traefik.http.routers.traefik-dashboard.entrypoints=mitmproxy-web"
+      - "traefik.http.routers.traefik-dashboard.service=api@internal"
+      - "traefik.http.routers.traefik-dashboard.middlewares=traefik-dashboard-auth"
+
+      # Traefik API only for dashboard frontend requests.
+      # This prevents Traefik from stealing Prowlarr /api requests.
+      - "traefik.http.routers.traefik-api.rule=PathPrefix(`/api`) && HeaderRegexp(`Referer`, `.*/dashboard/.*`)"
+      - "traefik.http.routers.traefik-api.priority=10000"
+      - "traefik.http.routers.traefik-api.entrypoints=mitmproxy-web"
+      - "traefik.http.routers.traefik-api.service=api@internal"
+      - "traefik.http.routers.traefik-api.middlewares=traefik-dashboard-auth"
+
+      # login: admin / admin
+      - "traefik.http.middlewares.traefik-dashboard-auth.basicauth.users=admin:{SHA}0tTNr469Z7oY3fDRwNoUXE2vTBw="
+
+    networks:
+      - mitmproxy
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    restart: always
+
+    environment:
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
+      TZ: "${TZ:-Asia/Tbilisi}"
+      LANG: "en_US.UTF-8"
+      LC_ALL: "en_US.UTF-8"
+
+    volumes:
+      - "./data/prowlarr/config:/config"
+
+    expose:
+      - "9696"
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+    networks:
+      - mitmproxy
+
+  mitmproxy:
+    image: mitmproxy/mitmproxy:latest
+    container_name: prowlarr-mitmproxy
+    command: >
+      mitmweb
+      --no-web-open-browser
+      --listen-host 0.0.0.0
+      --listen-port 80
+      --web-host 0.0.0.0
+      --web-port 8080
+      --mode reverse:http://prowlarr:9696
+      --no-http2
+      --set web_password=$$argon2id$$v=19$$m=65536,t=3,p=4$$rkaIfa0HzARWIyGivieQmg$$DtU0C01py9a9c1HPpsek/ctIkYrOVQ17BKTDDAOh3Vg
+
+    restart: always
+
+    expose:
+      - "80"
+      - "8080"
+
+    depends_on:
+      traefik:
+        condition: service_healthy
+      prowlarr:
+        condition: service_started
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+    healthcheck:
+      test: ["CMD-SHELL", "python - <<'PY'\nimport socket\ns = socket.create_connection(('127.0.0.1', 8080), 3)\ns.close()\nPY"]
+      start_period: 6s
+      interval: 6s
+      retries: 50
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=prowlarr_mitmproxy"
+
+      # Mitmproxy UI:
+      # http://host/mitmproxy-gui/
+      - "traefik.http.services.mitmproxy-gui.loadbalancer.server.port=8080"
+      - "traefik.http.routers.mitmproxy-gui.service=mitmproxy-gui"
+      - "traefik.http.routers.mitmproxy-gui.entrypoints=mitmproxy-web"
+      - "traefik.http.routers.mitmproxy-gui.rule=PathPrefix(`/mitmproxy-gui`)"
+      - "traefik.http.routers.mitmproxy-gui.priority=9000"
+      - "traefik.http.routers.mitmproxy-gui.middlewares=mitmproxy-gui-stripprefix,mitmproxy-gui-headers"
+
+      - "traefik.http.middlewares.mitmproxy-gui-stripprefix.stripprefix.prefixes=/mitmproxy-gui"
+      - "traefik.http.middlewares.mitmproxy-gui-stripprefix.stripprefix.forceslash=true"
+
+      - "traefik.http.middlewares.mitmproxy-gui-headers.headers.customrequestheaders.Host=127.0.0.1"
+      - "traefik.http.middlewares.mitmproxy-gui-headers.headers.customrequestheaders.Origin="
+      - "traefik.http.middlewares.mitmproxy-gui-headers.headers.customrequestheaders.X-Forwarded-Proto=https"
+
+      # Main endpoint:
+      # http://host/ -> mitmproxy -> prowlarr:9696
+      - "traefik.http.services.mitmproxy-web.loadbalancer.server.port=80"
+      - "traefik.http.routers.mitmproxy-web.service=mitmproxy-web"
+      - "traefik.http.routers.mitmproxy-web.entrypoints=mitmproxy-web"
+      - "traefik.http.routers.mitmproxy-web.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.mitmproxy-web.priority=1000"
+
+    networks:
+      - mitmproxy
+
+networks:
+  mitmproxy:
+    name: prowlarr_mitmproxy

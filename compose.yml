@@ -7,6 +7,7 @@ services:
       - "--log.level=INFO"
       - "--api=true"
       - "--api.dashboard=true"
+      - "--experimental.localPlugins.lampaCategories.moduleName=github.com/local/lampa-categories"
 
       - "--providers.docker=true"
       - "--providers.docker.endpoint=unix:///var/run/docker.sock"
@@ -24,6 +25,7 @@ services:
 
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./plugins/lampa-categories:/plugins-local/src/github.com/local/lampa-categories:ro"
 
     logging:
       driver: "json-file"
@@ -155,6 +157,8 @@ services:
       - "traefik.http.routers.mitmproxy-web.entrypoints=mitmproxy-web"
       - "traefik.http.routers.mitmproxy-web.rule=PathPrefix(`/`)"
       - "traefik.http.routers.mitmproxy-web.priority=1000"
+      - "traefik.http.routers.mitmproxy-web.middlewares=prowlarr-lampa-categories"
+      - "traefik.http.middlewares.prowlarr-lampa-categories.plugin.lampaCategories.parameterName=categories"
 
     networks:
       - mitmproxy

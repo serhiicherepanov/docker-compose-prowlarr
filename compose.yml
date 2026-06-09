@@ -159,6 +159,7 @@ services:
       - "traefik.http.routers.mitmproxy-web.priority=1000"
       - "traefik.http.routers.mitmproxy-web.middlewares=prowlarr-lampa-categories"
       - "traefik.http.middlewares.prowlarr-lampa-categories.plugin.lampaCategories.parameterName=categories"
+      - "traefik.http.middlewares.prowlarr-lampa-categories.plugin.lampaCategories.logRequests=true"
 
     networks:
       - mitmproxy

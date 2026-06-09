@@ -2,7 +2,7 @@ package lampa_categories
 
 import (
 	"context"
-	"log"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -55,14 +55,18 @@ func (m *lampaCategories) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	if report.rewritten != "" {
 		req.Header.Set("X-Lampa-Categories-Rewritten", report.rewritten)
 	}
+	if report.final != "" {
+		req.Header.Set("X-Lampa-Categories-Final", report.final)
+	}
 
 	if m.logRequests && report.status != "missing" {
-		log.Printf(
-			"lampa-categories path=%q status=%s original=%q rewritten=%q",
+		fmt.Printf(
+			"lampa-categories path=%q status=%s original=%q rewritten=%q final=%q\n",
 			req.URL.Path,
 			report.status,
 			report.original,
 			report.rewritten,
+			report.final,
 		)
 	}
 
@@ -73,6 +77,7 @@ type rewriteReport struct {
 	status    string
 	original  string
 	rewritten string
+	final     string
 }
 
 func splitCommaSeparatedParameter(rawQuery string, parameterName string) (string, rewriteReport) {
@@ -100,21 +105,33 @@ func splitCommaSeparatedParameter(rawQuery string, parameterName string) (string
 			continue
 		}
 
-		values := strings.Split(decodedValue, ",")
 		encodedName := url.QueryEscape(parameterName)
-		for _, item := range values {
-			item = strings.TrimSpace(item)
-			if item == "" {
-				continue
-			}
-
-			rewritten = append(rewritten, encodedName+"="+url.QueryEscape(item))
+		lastValue := lastNonEmptyValue(decodedValue)
+		if lastValue == "" {
+			report.status = "rewritten"
+			continue
 		}
+
+		finalPart := encodedName + "=" + url.QueryEscape(lastValue)
+		rewritten = append(rewritten, finalPart)
 		report.status = "rewritten"
-		report.rewritten = strings.Join(values, ",")
+		report.rewritten = lastValue
+		report.final = finalPart
 	}
 
 	return strings.Join(rewritten, "&"), report
+}
+
+func lastNonEmptyValue(value string) string {
+	items := strings.Split(value, ",")
+	for i := len(items) - 1; i >= 0; i-- {
+		item := strings.TrimSpace(items[i])
+		if item != "" {
+			return item
+		}
+	}
+
+	return ""
 }
 
 func requestURI(u *url.URL) string {

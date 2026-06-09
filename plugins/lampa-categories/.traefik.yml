@@ -1,6 +1,6 @@
 displayName: Lampa Categories Query Fix
 type: middleware
 import: github.com/local/lampa-categories
-summary: Splits comma-separated query categories into repeated query parameters.
+summary: Rewrites comma-separated query categories to keep only the last value.
 testData:
   parameterName: categories

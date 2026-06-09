@@ -19,12 +19,12 @@ cd plugins/lampa-categories && go test ./...
 
 ## Traefik Plugin Notes
 
-The `lampa-categories` plugin rewrites comma-separated `categories` query values into repeated query parameters for Prowlarr search requests.
+The `lampa-categories` plugin rewrites comma-separated `categories` query values to keep only the last category for Prowlarr search requests.
 
 Expected rewrite:
 
 ```text
-categories=2000%2C5070 -> categories=2000&categories=5070
+categories=2000%2C5070 -> categories=5070
 ```
 
 Keep plugin changes narrow and preserve unrelated query parameters exactly where possible.

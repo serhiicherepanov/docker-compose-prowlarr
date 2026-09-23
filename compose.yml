@@ -92,6 +92,28 @@ services:
     networks:
       - mitmproxy
 
+  # Prowlarr: Settings -> Indexers -> FlareSolverr, host http://flaresolverr:8191/
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: prowlarr-flaresolverr
+    restart: always
+
+    environment:
+      LOG_LEVEL: "${FLARESOLVERR_LOG_LEVEL:-info}"
+      TZ: "${TZ:-Asia/Tbilisi}"
+
+    expose:
+      - "8191"
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+    networks:
+      - mitmproxy
+
   mitmproxy:
     image: mitmproxy/mitmproxy:latest
     container_name: prowlarr-mitmproxy
